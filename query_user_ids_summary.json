@@ -1,0 +1,21 @@
+{
+  "input": "queries.jsonl",
+  "json_objects": 72,
+  "lines_with_multiple_objects": {
+    "42": 2
+  },
+  "raw_source_counts": {
+    "profiles": 1304,
+    "catalog_users": 1304
+  },
+  "unique_users": 0,
+  "unique_profiles": 1099,
+  "unique_catalog_users": 1099,
+  "unique_total": 1099,
+  "profiles_not_in_catalog_users": 0,
+  "catalog_users_not_in_profiles": 0,
+  "outputs": [
+    "query_user_ids.txt",
+    "query_user_ids.csv"
+  ]
+}
