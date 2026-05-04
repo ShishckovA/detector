@@ -2,3 +2,4 @@ venv/
 .token
 *.onnx
 **/*.jpg
+**/__pycache__

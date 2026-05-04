@@ -1,0 +1,14 @@
+{
+  "positive_images": 1043,
+  "negative_images": 1540,
+  "score_filter": "> 0.65",
+  "score_threshold": 0.65,
+  "min_width": 48,
+  "min_height": 48,
+  "best_face_only": true,
+  "positive_dir": "face_dataset/data/positive",
+  "negative_dir": "face_dataset/data/negative",
+  "negative_source_csv": "vk_face_scores/faces_48plus_by_score.csv",
+  "negative_layout": "face_dataset/data/negative/vk_user_photos/<user_id>/face_1.jpg[, face_2.jpg]",
+  "negative_users": 922
+}
