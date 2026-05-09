@@ -26,10 +26,13 @@ html {
   scroll-behavior: smooth;
 }
 
-#analyzer,
 #how,
 #scenarios {
   scroll-margin-top: 82px;
+}
+
+#analyzer {
+  scroll-margin-top: 0;
 }
 
 body {
@@ -553,6 +556,10 @@ h1 {
 }
 
 @media (max-width: 760px) {
+  #analyzer {
+    scroll-margin-top: 66px;
+  }
+
   .topbar {
     padding: 12px 16px;
   }
