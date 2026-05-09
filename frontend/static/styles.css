@@ -540,6 +540,10 @@ h1 {
     background-position: 62% center;
   }
 
+  .intro-row {
+    display: none;
+  }
+
   .hero-inner,
   .info-band,
   .use-section {
