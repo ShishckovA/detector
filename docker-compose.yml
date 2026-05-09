@@ -1,0 +1,46 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      FACE_CLASSIFIER_MODEL_PATH: /app/runs/face_efficientnet_b0/cpu_export/img224/model_fp32_ts.pt
+      FACE_DETECTOR_MODEL_PATH: /app/face_detection_yunet_2023mar.onnx
+      TORCH_NUM_THREADS: "1"
+      TORCH_NUM_INTEROP_THREADS: "1"
+      INFERENCE_MAX_CONCURRENCY: "2"
+    volumes:
+      - type: bind
+        source: ./runs
+        target: /app/runs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./face_detection_yunet_2023mar.onnx
+        target: /app/face_detection_yunet_2023mar.onnx
+        read_only: true
+        bind:
+          create_host_path: false
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "${PUBLIC_PORT:-8000}:80"
+    restart: unless-stopped

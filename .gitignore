@@ -9,3 +9,4 @@ venv/
 runs/
 **/*.jpg
 **/__pycache__
+*.log

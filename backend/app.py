@@ -13,14 +13,11 @@ import cv2 as cv
 import numpy as np
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 from torchvision import transforms
 
 
-APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = APP_DIR / "static"
 DEFAULT_CLASSIFIER_PATH = Path("runs/face_efficientnet_b0/cpu_export/img224/model_fp32_ts.pt")
 DEFAULT_DETECTOR_PATH = Path("face_detection_yunet_2023mar.onnx")
 IMAGE_SIZE = 224
@@ -307,12 +304,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CPU Face Inference", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-
-@app.get("/", response_class=HTMLResponse)
-def index() -> HTMLResponse:
-    return HTMLResponse((STATIC_DIR / "index.html").read_text(encoding="utf-8"))
 
 
 @app.get("/health")
