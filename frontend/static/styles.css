@@ -576,7 +576,8 @@ h1 {
   }
 
   h1 {
-    font-size: 46px;
+    font-size: clamp(38px, 11.5vw, 46px);
+    line-height: 0.98;
   }
 
   .lead {
