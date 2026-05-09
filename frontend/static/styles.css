@@ -26,6 +26,12 @@ html {
   scroll-behavior: smooth;
 }
 
+#analyzer,
+#how,
+#scenarios {
+  scroll-margin-top: 82px;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -552,7 +558,7 @@ h1 {
   }
 
   .brand span:last-child {
-    max-width: 176px;
+    max-width: calc(100vw - 84px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
