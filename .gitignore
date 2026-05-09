@@ -1,5 +1,11 @@
 venv/
+.venv/
+.DS_Store
 .token
 *.onnx
+*.pt
+*.pth
+*.ckpt
+runs/
 **/*.jpg
 **/__pycache__
