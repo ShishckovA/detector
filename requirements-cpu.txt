@@ -6,3 +6,8 @@ torch; platform_system != "Linux"
 torchvision; platform_system != "Linux"
 pillow
 opencv-python-headless
+fastapi
+uvicorn[standard]
+python-multipart
+pytest
+httpx
