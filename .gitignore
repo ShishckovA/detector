@@ -9,4 +9,7 @@ venv/
 runs/
 **/*.jpg
 **/__pycache__
+.pytest_cache/
 *.log
+data/raw/
+reports/**/crops/

@@ -57,8 +57,8 @@ class FaceImageDataset:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train EfficientNet-B0 on face_dataset.")
-    parser.add_argument("--dataset-dir", type=Path, default=Path("face_dataset"))
+    parser = argparse.ArgumentParser(description="Train EfficientNet-B0 on data/face_dataset.")
+    parser.add_argument("--dataset-dir", type=Path, default=Path("data/face_dataset"))
     parser.add_argument("--runs-root", type=Path, default=Path("runs"))
     parser.add_argument("--run-name", default="face_efficientnet_b0")
     parser.add_argument(
@@ -677,7 +677,7 @@ def import_training_dependencies() -> dict[str, Any]:
         raise SystemExit(
             "Training dependencies are not installed. Install them with:\n"
             "  python3 -m venv .venv\n"
-            "  .venv/bin/pip install -r requirements-train.txt"
+            "  .venv/bin/pip install -r training/requirements-train.txt"
         ) from exc
 
     try:

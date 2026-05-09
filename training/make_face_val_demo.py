@@ -10,7 +10,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from train_face_classifier import (
+from training.train_face_classifier import (
     binary_roc_auc,
     build_model,
     build_transforms,

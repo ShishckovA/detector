@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from cpu_model_utils import import_cpu_dependencies, make_val_transform
+from training.cpu_model_utils import import_cpu_dependencies, make_val_transform
 
 
 def parse_args() -> argparse.Namespace:

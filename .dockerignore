@@ -11,8 +11,9 @@ __pycache__
 *.pth
 *.ckpt
 runs
-face_dataset
-face_scores
-vk_face_scores
-vk_user_photos
-experiments
+data
+docs
+reports
+tests
+tools
+training

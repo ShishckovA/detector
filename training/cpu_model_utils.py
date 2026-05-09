@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from train_face_classifier import binary_roc_auc, build_model, build_transforms
+from training.train_face_classifier import binary_roc_auc, build_model, build_transforms
 
 
 MEAN = [0.485, 0.456, 0.406]
@@ -45,7 +45,7 @@ def import_cpu_dependencies() -> dict[str, Any]:
         raise SystemExit(
             "CPU inference dependencies are not installed. Install them with:\n"
             "  python3 -m venv .venv\n"
-            "  .venv/bin/pip install -r requirements-cpu.txt"
+            "  .venv/bin/pip install -r training/requirements-cpu.txt"
         ) from exc
 
     return {
@@ -84,8 +84,9 @@ def resolve_row_image_path(row: dict[str, Any], csv_path: Path) -> Path:
         candidates.extend(
             [
                 Path.cwd() / rel,
+                Path.cwd() / "data" / rel,
                 csv_path.parent.parent.parent / rel,
-                csv_path.parent.parent.parent / "face_dataset" / rel,
+                csv_path.parent.parent.parent / "data" / rel,
             ]
         )
     candidates.append(resolved)

@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from cpu_model_utils import (
+from training.cpu_model_utils import (
     benchmark_callable,
     import_cpu_dependencies,
     latency_summary,

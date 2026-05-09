@@ -87,9 +87,9 @@ def load_ids(path):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Download VK avatars and previous profile avatars.")
-    parser.add_argument("--ids", type=Path, default=Path("query_user_ids.txt"))
+    parser.add_argument("--ids", type=Path, default=Path("data/vk/query_user_ids.txt"))
     parser.add_argument("--token", type=Path, default=Path(".token"))
-    parser.add_argument("--out", type=Path, default=Path("vk_user_photos"))
+    parser.add_argument("--out", type=Path, default=Path("data/vk_user_photos"))
     parser.add_argument("--sleep", type=float, default=0.34)
     parser.add_argument("--min-normal-size", type=int, default=241)
     parser.add_argument("--resume", action="store_true")

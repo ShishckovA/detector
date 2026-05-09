@@ -299,7 +299,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Batch YuNet face scoring and crop export.")
     parser.add_argument("input", nargs="?", default="data", type=Path, help="Input image or directory.")
     parser.add_argument("--model", type=Path, default=Path("face_detection_yunet_2023mar.onnx"))
-    parser.add_argument("--out", type=Path, default=Path("face_scores"))
+    parser.add_argument("--out", type=Path, default=Path("reports/face_scores"))
     parser.add_argument("--margin", type=float, default=0.25)
     parser.add_argument("--score-threshold", type=float, default=0.1)
     parser.add_argument("--best-face-only", action="store_true", help="Keep only the highest-score face per source image.")

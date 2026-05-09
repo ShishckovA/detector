@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from cpu_model_utils import (
+from training.cpu_model_utils import (
     evaluate_model,
     import_cpu_dependencies,
     load_checkpoint_model,
@@ -72,7 +72,7 @@ def export_dynamic_int8(model: Any, example_input: Any, output_path: Path, torch
 
 
 def calibration_loader(rows: list[dict[str, Any]], image_size: int, calibration_size: int, deps: dict[str, Any]) -> Any:
-    from cpu_model_utils import CsvImageDataset, make_val_transform
+    from training.cpu_model_utils import CsvImageDataset, make_val_transform
 
     DataLoader = deps["DataLoader"]
     transform = make_val_transform(deps, image_size)
