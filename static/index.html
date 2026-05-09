@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Детектор Общительных</title>
+    <meta
+      name="description"
+      content="Сервис, который по фотографии помогает оценить, насколько человек выглядит открытым к общению."
+    />
+    <link rel="preload" href="/static/assets/hero-interface.png" as="image" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#analyzer" aria-label="Детектор Общительных">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Детектор Общительных</span>
+      </a>
+      <nav class="nav" aria-label="Навигация">
+        <a href="#analyzer">Проверить</a>
+        <a href="#how">Как работает</a>
+        <a href="#scenarios">Для кого</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" id="top">
+        <div class="hero-overlay" aria-hidden="true"></div>
+        <div class="hero-inner">
+          <div class="intro">
+            <p class="eyebrow">оценка по фотографии</p>
+            <h1>Детектор Общительных</h1>
+            <p class="lead">
+              Загрузите портрет и получите понятную оценку: насколько человек
+              на фото выглядит открытым, контактным и готовым к разговору.
+            </p>
+            <div class="intro-row">
+              <a class="primary-link" href="#analyzer">Проверить фото</a>
+            </div>
+          </div>
+
+          <section class="analyzer" id="analyzer" aria-label="Проверка фотографии">
+            <div class="analyzer-head">
+              <div>
+                <p class="panel-kicker">быстрая проверка</p>
+                <h2>Загрузите портрет</h2>
+              </div>
+              <button class="ghost-button" id="resetButton" type="button" disabled>
+                Сбросить
+              </button>
+            </div>
+
+            <div class="upload-grid">
+              <div class="drop-zone" id="dropZone">
+                <input
+                  id="fileInput"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-label="Фото для проверки"
+                />
+                <canvas id="previewCanvas" width="880" height="640" hidden></canvas>
+                <div class="empty-state" id="emptyState">
+                  <div class="empty-icon" aria-hidden="true"></div>
+                  <strong>Перетащите фото сюда</strong>
+                  <span>или выберите файл с устройства</span>
+                </div>
+              </div>
+
+              <aside class="result-panel" aria-live="polite">
+                <div class="result-empty" id="resultEmpty">
+                  <span class="result-label">Результат</span>
+                  <strong>Оценка появится здесь</strong>
+                </div>
+
+                <div class="result-content" id="resultContent" hidden>
+                  <div class="verdict-line">
+                    <span class="result-label">Тип впечатления</span>
+                    <strong id="labelText">-</strong>
+                  </div>
+                  <div class="score-ring" id="scoreRing" style="--score: 0">
+                    <span id="scoreValue">0.00</span>
+                  </div>
+                  <dl class="metric-list">
+                    <div>
+                      <dt>Статус</dt>
+                      <dd id="thresholdValue">-</dd>
+                    </div>
+                    <div>
+                      <dt>Качество фото</dt>
+                      <dd id="detectorValue">-</dd>
+                    </div>
+                    <div>
+                      <dt>Скорость</dt>
+                      <dd id="totalTiming">-</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div class="message" id="messageBox" hidden></div>
+              </aside>
+            </div>
+
+            <div class="control-row">
+              <button class="secondary-button" id="pickButton" type="button">
+                Выбрать файл
+              </button>
+              <button class="primary-button" id="submitButton" type="button" disabled>
+                Узнать оценку
+              </button>
+              <span class="file-meta" id="fileMeta">Файл не выбран</span>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="info-band" id="how">
+        <div class="section-copy">
+          <p class="eyebrow">как работает</p>
+          <h2>Без анкет и долгих вопросов</h2>
+        </div>
+        <div class="steps">
+          <article class="step-card">
+            <span>01</span>
+            <h3>Загрузите портрет</h3>
+            <p>Лучше всего подойдет четкое фото, где лицо хорошо видно.</p>
+          </article>
+          <article class="step-card">
+            <span>02</span>
+            <h3>Получите оценку</h3>
+            <p>Сервис покажет, насколько образ выглядит открытым к общению.</p>
+          </article>
+          <article class="step-card">
+            <span>03</span>
+            <h3>Сравните варианты</h3>
+            <p>Проверьте разные фото и выберите то, где впечатление сильнее.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="use-section" id="scenarios">
+        <div class="section-copy">
+          <p class="eyebrow">для кого</p>
+          <h2>Когда первое впечатление важно</h2>
+          <p>
+            Детектор помогает быстро понять, какое фото лучше подходит для
+            анкеты, профиля, команды или публичной страницы.
+          </p>
+        </div>
+        <div class="scenario-list">
+          <article class="scenario-card">
+            <h3>Профиль и анкета</h3>
+            <p>Выберите фото, которое выглядит теплее и располагает к контакту.</p>
+          </article>
+          <article class="scenario-card">
+            <h3>Команда и сайт</h3>
+            <p>Проверьте портреты перед публикацией на странице компании.</p>
+          </article>
+          <article class="scenario-card">
+            <h3>Контент и эксперименты</h3>
+            <p>Сравните несколько вариантов без ручной субъективной оценки.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
