@@ -23,16 +23,24 @@ The model artifacts must exist on the host:
 docker compose up -d --build
 ```
 
-By default nginx is published on host port `8000`:
+By default nginx serves TLS on host port `8000`:
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl https://detector.158.160.162.27.sslip.io:8000/health
 ```
 
-To use a different public port:
+TLS certificates are read from `certbot/conf`, which is intentionally not committed.
+For the sslip.io deployment, issue or renew the certificate on the host with a
+temporary standalone ACME challenge on port `80`, then restart nginx:
 
 ```bash
-PUBLIC_PORT=80 docker compose up -d --build
+mkdir -p certbot/conf
+docker run --rm -p 80:80 \
+  -v "$PWD/certbot/conf:/etc/letsencrypt" \
+  certbot/certbot certonly --standalone \
+  -d detector.158.160.162.27.sslip.io \
+  --agree-tos --register-unsafely-without-email --non-interactive
+docker compose up -d --build
 ```
 
 Backend is not exposed on a host port. It is reachable only from the internal Docker network as `backend:8000`; nginx proxies `/health` and `/api/*` to it.

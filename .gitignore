@@ -16,3 +16,4 @@ data/face_dataset*/data/
 data/positives_original/
 data/negatives_original/
 reports/**/crops/
+certbot/

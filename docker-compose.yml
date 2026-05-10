@@ -43,6 +43,13 @@ services:
     depends_on:
       - backend
       - frontend
+    volumes:
+      - type: bind
+        source: ./certbot/conf
+        target: /etc/letsencrypt
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
-      - "${PUBLIC_PORT:-8000}:80"
+      - "${PUBLIC_HTTPS_PORT:-8000}:443"
     restart: unless-stopped
