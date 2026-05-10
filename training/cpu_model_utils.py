@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from training.train_face_classifier import binary_roc_auc, build_model, build_transforms
+from training.train_face_classifier import ID_TO_LABEL, LABEL_TO_ID, build_model, build_transforms, class_metric_row
 
 
 MEAN = [0.485, 0.456, 0.406]
@@ -99,10 +99,18 @@ def resolve_row_image_path(row: dict[str, Any], csv_path: Path) -> Path:
 def load_checkpoint_model(checkpoint_path: Path, deps: dict[str, Any], device: Any) -> Any:
     torch = deps["torch"]
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = build_model(deps, "random")
+    class_to_idx = checkpoint.get("class_to_idx") or checkpoint.get("config", {}).get("class_to_idx") or LABEL_TO_ID
+    id_to_label = {int(index): label for label, index in class_to_idx.items()}
+    classifier_weight = checkpoint["model_state_dict"].get("classifier.1.weight")
+    num_outputs = int(classifier_weight.shape[0]) if classifier_weight is not None else len(class_to_idx)
+    if num_outputs == 1:
+        id_to_label = {0: "negative", 1: "positive"}
+    model = build_model(deps, "random", num_classes=num_outputs)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
     model.eval()
+    model.class_to_idx = class_to_idx
+    model.id_to_label = id_to_label
     return model
 
 
@@ -125,81 +133,78 @@ def evaluate_model(
     transform = make_val_transform(deps, image_size)
     dataset = CsvImageDataset(rows, transform)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    id_to_label = getattr(model, "id_to_label", ID_TO_LABEL)
 
     predictions = [dict(row) for row in rows]
     with torch.inference_mode():
         for images, indices in loader:
-            logits = model(images).squeeze(1)
-            probs = torch.sigmoid(logits).detach().cpu().tolist()
+            logits = model(images)
+            if logits.ndim == 1:
+                logits = logits.unsqueeze(1)
             logits_list = logits.detach().cpu().tolist()
-            for index, logit, prob in zip(indices.tolist(), logits_list, probs):
-                predictions[index]["logit"] = float(logit)
-                predictions[index]["prob_positive"] = float(prob)
+            if logits.shape[1] == 1:
+                probs = torch.sigmoid(logits[:, 0]).detach().cpu().tolist()
+                for index, logit_values, prob in zip(indices.tolist(), logits_list, probs):
+                    pred_id = 1 if float(prob) >= 0.5 else 0
+                    predictions[index]["pred_label_id"] = pred_id
+                    predictions[index]["pred_label"] = id_to_label[pred_id]
+                    predictions[index]["logit_positive"] = float(logit_values[0])
+                    predictions[index]["prob_negative"] = 1.0 - float(prob)
+                    predictions[index]["prob_positive"] = float(prob)
+                continue
 
-    metrics = summarize_predictions(predictions, threshold=0.5)
-    metrics["best_f1_threshold"] = best_f1_threshold(predictions)
-    metrics["best_accuracy_threshold"] = best_accuracy_threshold(predictions)
+            probs = torch.softmax(logits, dim=1).detach().cpu().tolist()
+            for index, logit_values, prob_values in zip(indices.tolist(), logits_list, probs):
+                pred_id = max(range(len(prob_values)), key=lambda class_index: prob_values[class_index])
+                predictions[index]["pred_label_id"] = pred_id
+                predictions[index]["pred_label"] = id_to_label.get(pred_id, str(pred_id))
+                for class_id, class_name in id_to_label.items():
+                    predictions[index][f"logit_{class_name}"] = float(logit_values[class_id])
+                    predictions[index][f"prob_{class_name}"] = float(prob_values[class_id])
+
+    metrics = summarize_predictions(predictions, id_to_label)
     return predictions, metrics
 
 
-def summarize_predictions(predictions: list[dict[str, Any]], threshold: float) -> dict[str, Any]:
+def summarize_predictions(predictions: list[dict[str, Any]], id_to_label: dict[int, str] | None = None) -> dict[str, Any]:
+    id_to_label = id_to_label or ID_TO_LABEL
     labels = [int(row["label_id"]) for row in predictions]
-    logits = [float(row["logit"]) for row in predictions]
-    probs = [float(row["prob_positive"]) for row in predictions]
-    pred_ids = [1 if prob >= threshold else 0 for prob in probs]
+    pred_ids = [int(row["pred_label_id"]) for row in predictions]
     counts = Counter((label, pred_id) for label, pred_id in zip(labels, pred_ids))
-    tn = counts[(0, 0)]
-    fp = counts[(0, 1)]
-    fn = counts[(1, 0)]
-    tp = counts[(1, 1)]
-    precision = tp / (tp + fp) if tp + fp else 0.0
-    recall = tp / (tp + fn) if tp + fn else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    correct = sum(1 for label, pred_id in zip(labels, pred_ids) if label == pred_id)
+    precisions: list[float] = []
+    recalls: list[float] = []
+    f1s: list[float] = []
+    confusion: dict[str, dict[str, int]] = {}
+    per_class: dict[str, dict[str, float]] = {}
+    label_counts = Counter(labels)
+    for class_id, class_name in id_to_label.items():
+        tp = counts[(class_id, class_id)]
+        fp = sum(counts[(other, class_id)] for other in id_to_label if other != class_id)
+        fn = sum(counts[(class_id, other)] for other in id_to_label if other != class_id)
+        predicted_count = sum(1 for pred_id in pred_ids if pred_id == class_id)
+        per_class[class_name] = class_metric_row(
+            float(tp),
+            float(fp),
+            float(fn),
+            float(label_counts[class_id]),
+            float(predicted_count),
+        )
+        precisions.append(per_class[class_name]["precision"])
+        recalls.append(per_class[class_name]["recall"])
+        f1s.append(per_class[class_name]["f1"])
+        confusion[class_name] = {id_to_label[pred_id]: counts[(class_id, pred_id)] for pred_id in id_to_label}
+
     return {
         "rows": len(predictions),
-        "threshold": threshold,
-        "accuracy": (tp + tn) / max(1, len(predictions)),
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "roc_auc": binary_roc_auc(labels, logits),
-        "confusion": {"tn": tn, "fp": fp, "fn": fn, "tp": tp},
+        "accuracy": correct / max(1, len(predictions)),
+        "precision": sum(precisions) / len(precisions),
+        "recall": sum(recalls) / len(recalls),
+        "f1": sum(f1s) / len(f1s),
+        "per_class": per_class,
+        "labels": {id_to_label[class_id]: label_counts[class_id] for class_id in id_to_label},
+        "confusion": confusion,
     }
-
-
-def threshold_candidates(predictions: list[dict[str, Any]]) -> list[float]:
-    probs = sorted({float(row["prob_positive"]) for row in predictions})
-    if not probs:
-        return [0.5]
-    candidates = [0.0, 1.0]
-    candidates.extend(probs)
-    candidates.extend((left + right) / 2.0 for left, right in zip(probs, probs[1:]))
-    candidates.append(0.5)
-    return sorted(set(max(0.0, min(1.0, value)) for value in candidates))
-
-
-def best_f1_threshold(predictions: list[dict[str, Any]]) -> dict[str, Any]:
-    best: dict[str, Any] | None = None
-    for threshold in threshold_candidates(predictions):
-        metrics = summarize_predictions(predictions, threshold)
-        key = (metrics["f1"], metrics["accuracy"], -abs(threshold - 0.5))
-        if best is None or key > best["_key"]:
-            best = {**metrics, "_key": key}
-    assert best is not None
-    best.pop("_key", None)
-    return best
-
-
-def best_accuracy_threshold(predictions: list[dict[str, Any]]) -> dict[str, Any]:
-    best: dict[str, Any] | None = None
-    for threshold in threshold_candidates(predictions):
-        metrics = summarize_predictions(predictions, threshold)
-        key = (metrics["accuracy"], metrics["f1"], -abs(threshold - 0.5))
-        if best is None or key > best["_key"]:
-            best = {**metrics, "_key": key}
-    assert best is not None
-    best.pop("_key", None)
-    return best
 
 
 def write_predictions_csv(path: Path, predictions: list[dict[str, Any]]) -> None:

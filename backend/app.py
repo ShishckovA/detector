@@ -14,12 +14,13 @@ import numpy as np
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from torchvision import transforms
 
 
 DEFAULT_CLASSIFIER_PATH = Path("runs/face_efficientnet_b0/cpu_export/img224/model_fp32_ts.pt")
 DEFAULT_DETECTOR_PATH = Path("face_detection_yunet_2023mar.onnx")
+DEFAULT_CLASS_LABELS = ("positive", "negative", "alex", "artem")
 IMAGE_SIZE = 224
 RESIZE_SIZE = 256
 NORMALIZE_MEAN = [0.485, 0.456, 0.406]
@@ -34,9 +35,11 @@ class Settings:
     torch_num_interop_threads: int = 1
     max_concurrency: int = 2
     classifier_threshold: float = 0.65
+    class_labels: tuple[str, ...] = DEFAULT_CLASS_LABELS
     detector_score_threshold: float = 0.65
     detector_nms_threshold: float = 0.3
     detector_top_k: int = 5000
+    detector_input_max_side: int = 1024
     crop_margin: float = 0.25
     min_face_size: int = 48
 
@@ -93,7 +96,7 @@ class InferenceService:
 
         detect_start = time.perf_counter()
         with self.detector_lock:
-            faces = detect_faces(self.detector, bgr_image)
+            faces = detect_faces(self.detector, bgr_image, self.settings.detector_input_max_side)
         detection_ms = elapsed_ms(detect_start)
 
         face = choose_best_face(faces)
@@ -104,6 +107,8 @@ class InferenceService:
                 "threshold": self.settings.classifier_threshold,
                 "label": None,
                 "score": None,
+                "scores": None,
+                "logits": None,
                 "bbox": None,
                 "detector_score": None,
                 "timings_ms": {
@@ -126,6 +131,8 @@ class InferenceService:
                 "threshold": self.settings.classifier_threshold,
                 "label": None,
                 "score": None,
+                "scores": None,
+                "logits": None,
                 "bbox": crop_box_to_payload(crop_box),
                 "detector_score": face.detector_score,
                 "timings_ms": {
@@ -140,10 +147,33 @@ class InferenceService:
 
         classify_start = time.perf_counter()
         with self.torch.inference_mode():
-            logit = float(self.classifier(tensor).squeeze().item())
-            score = float(self.torch.sigmoid(self.torch.tensor(logit)).item())
+            classifier_output = self.classifier(tensor).reshape(-1)
+            if classifier_output.numel() == 1:
+                logit = float(classifier_output.item())
+                score = float(self.torch.sigmoid(self.torch.tensor(logit)).item())
+                label = "positive" if score >= self.settings.classifier_threshold else "negative"
+                scores = {"negative": 1.0 - score, "positive": score}
+                logits = {"positive": logit}
+            else:
+                if classifier_output.numel() != len(self.settings.class_labels):
+                    raise ValueError(
+                        "Classifier output size "
+                        f"{classifier_output.numel()} does not match labels {self.settings.class_labels}"
+                    )
+                probabilities = self.torch.softmax(classifier_output, dim=0)
+                best_index = int(self.torch.argmax(probabilities).item())
+                label = self.settings.class_labels[best_index]
+                score = float(probabilities[best_index].item())
+                logit = float(classifier_output[best_index].item())
+                scores = {
+                    class_label: float(probabilities[index].item())
+                    for index, class_label in enumerate(self.settings.class_labels)
+                }
+                logits = {
+                    class_label: float(classifier_output[index].item())
+                    for index, class_label in enumerate(self.settings.class_labels)
+                }
         classification_ms = elapsed_ms(classify_start)
-        label = "positive" if score >= self.settings.classifier_threshold else "negative"
 
         return {
             "face_found": True,
@@ -151,6 +181,8 @@ class InferenceService:
             "detector_score": face.detector_score,
             "score": score,
             "logit": logit,
+            "scores": scores,
+            "logits": logits,
             "threshold": self.settings.classifier_threshold,
             "label": label,
             "timings_ms": {
@@ -175,6 +207,16 @@ def env_path(name: str, default: Path) -> Path:
     return Path(os.getenv(name, str(default)))
 
 
+def env_class_labels(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    labels = tuple(item.strip() for item in value.split(",") if item.strip())
+    if not labels:
+        raise ValueError(f"{name} must contain at least one label")
+    return labels
+
+
 def load_settings() -> Settings:
     return Settings(
         classifier_model_path=env_path("FACE_CLASSIFIER_MODEL_PATH", DEFAULT_CLASSIFIER_PATH),
@@ -183,9 +225,11 @@ def load_settings() -> Settings:
         torch_num_interop_threads=env_int("TORCH_NUM_INTEROP_THREADS", 1),
         max_concurrency=env_int("INFERENCE_MAX_CONCURRENCY", 2),
         classifier_threshold=env_float("FACE_CLASSIFIER_THRESHOLD", 0.65),
+        class_labels=env_class_labels("FACE_CLASS_LABELS", DEFAULT_CLASS_LABELS),
         detector_score_threshold=env_float("FACE_DETECTOR_SCORE_THRESHOLD", 0.65),
         detector_nms_threshold=env_float("FACE_DETECTOR_NMS_THRESHOLD", 0.3),
         detector_top_k=env_int("FACE_DETECTOR_TOP_K", 5000),
+        detector_input_max_side=env_int("FACE_DETECTOR_INPUT_MAX_SIDE", 1024),
         crop_margin=env_float("FACE_CROP_MARGIN", 0.25),
         min_face_size=env_int("FACE_MIN_SIZE", 48),
     )
@@ -235,18 +279,32 @@ def pil_to_bgr(image: Image.Image) -> np.ndarray:
     return cv.cvtColor(rgb, cv.COLOR_RGB2BGR)
 
 
-def detect_faces(detector: Any, bgr_image: np.ndarray) -> list[FaceCandidate]:
+def resize_for_detection(bgr_image: np.ndarray, max_side: int) -> tuple[np.ndarray, float]:
     image_height, image_width = bgr_image.shape[:2]
+    longest_side = max(image_width, image_height)
+    if max_side <= 0 or longest_side <= max_side:
+        return bgr_image, 1.0
+
+    scale = max_side / longest_side
+    resized_width = max(1, int(round(image_width * scale)))
+    resized_height = max(1, int(round(image_height * scale)))
+    resized = cv.resize(bgr_image, (resized_width, resized_height), interpolation=cv.INTER_AREA)
+    return resized, scale
+
+
+def detect_faces(detector: Any, bgr_image: np.ndarray, max_side: int = 1024) -> list[FaceCandidate]:
+    detector_image, scale = resize_for_detection(bgr_image, max_side)
+    image_height, image_width = detector_image.shape[:2]
     detector.setInputSize((image_width, image_height))
-    _, raw_faces = detector.detect(bgr_image)
+    _, raw_faces = detector.detect(detector_image)
     if raw_faces is None:
         return []
     return [
         FaceCandidate(
-            bbox_x=float(face[0]),
-            bbox_y=float(face[1]),
-            bbox_w=float(face[2]),
-            bbox_h=float(face[3]),
+            bbox_x=float(face[0]) / scale,
+            bbox_y=float(face[1]) / scale,
+            bbox_w=float(face[2]) / scale,
+            bbox_h=float(face[3]) / scale,
             detector_score=float(face[14]),
         )
         for face in raw_faces
@@ -289,7 +347,7 @@ def decode_image(data: bytes) -> Image.Image:
         from io import BytesIO
 
         with Image.open(BytesIO(data)) as image:
-            return image.convert("RGB")
+            return ImageOps.exif_transpose(image).convert("RGB")
     except (UnidentifiedImageError, OSError) as exc:
         raise HTTPException(status_code=400, detail="Uploaded file is not a readable image") from exc
 
@@ -316,6 +374,8 @@ def health() -> dict[str, Any]:
         "torch_num_threads": settings.torch_num_threads,
         "torch_num_interop_threads": settings.torch_num_interop_threads,
         "max_concurrency": settings.max_concurrency,
+        "class_labels": list(settings.class_labels),
+        "detector_input_max_side": settings.detector_input_max_side,
     }
 
 

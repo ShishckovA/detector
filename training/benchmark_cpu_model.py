@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--compile", action="store_true", help="Compile checkpoint model with torch.compile at startup.")
     parser.add_argument("--compile-mode", default="reduce-overhead")
     parser.add_argument("--val-csv", type=Path, default=Path("runs/face_efficientnet_b0/splits/val.csv"))
-    parser.add_argument("--image-size", type=int, default=192)
+    parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--interop-threads", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=20)

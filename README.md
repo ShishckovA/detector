@@ -48,8 +48,15 @@ Training dependencies:
 Training entry point:
 
 ```bash
-python -m training.train_face_classifier --dataset-dir data/face_dataset
+python tools/build_face_dataset.py --clean --out data/face_dataset_png
+python -m training.train_face_classifier --dataset-dir data/face_dataset_png
 ```
+
+The current classifier uses four classes: `positive`, `negative`, `alex`, `artem`.
+Images under `data/positives_original/us/alex` and `data/positives_original/us/artem`
+are exported as separate classes with higher sample weight by default.
+Face detection applies EXIF orientation and downsizes large images to max side `1024`
+before YuNet, then maps the detected box back to original coordinates.
 
 CPU export dependencies:
 

@@ -26,6 +26,20 @@ let currentImage = null;
 let currentImageUrl = null;
 let latestResult = null;
 
+const DISPLAY_LABELS = {
+  positive: "Открытый",
+  negative: "Спокойный",
+  alex: "Алекс",
+  artem: "Артём",
+};
+
+const RESULT_MESSAGES = {
+  positive: "Фото производит открытое и контактное впечатление.",
+  negative: "Фото выглядит спокойнее. Можно попробовать другой ракурс или выражение.",
+  alex: "Фото больше всего похоже на класс Алекс.",
+  artem: "Фото больше всего похоже на класс Артём.",
+};
+
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -56,7 +70,7 @@ function getImpressionLabel(payload) {
   if (!payload.face_found) {
     return payload.reason === "face_too_small" ? "Нужно ближе" : "Не получилось";
   }
-  return payload.label === "positive" ? "Открытый" : "Спокойный";
+  return DISPLAY_LABELS[payload.label] || payload.label || "-";
 }
 
 function getUploadErrorMessage(message) {
@@ -236,12 +250,7 @@ function renderResult(payload) {
   totalTiming.textContent = formatMs(payload.timings_ms?.total);
 
   if (payload.face_found) {
-    setMessage(
-      payload.label === "positive"
-        ? "Фото производит открытое и контактное впечатление."
-        : "Фото выглядит спокойнее. Можно попробовать другой ракурс или выражение.",
-      "ok",
-    );
+    setMessage(RESULT_MESSAGES[payload.label] || "Оценка готова.", "ok");
   } else if (payload.reason === "face_too_small") {
     setMessage("Лицо на фото слишком маленькое. Попробуйте портрет крупнее.");
   } else {

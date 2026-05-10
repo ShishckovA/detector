@@ -1,0 +1,37 @@
+{
+  "positive_images": 1120,
+  "negative_images": 1832,
+  "alex_images": 59,
+  "artem_images": 27,
+  "positive_crops": 1047,
+  "negative_crops": 1634,
+  "alex_crops": 59,
+  "artem_crops": 27,
+  "rejected": 271,
+  "errors": 0,
+  "format": "png",
+  "detector_model": "face_detection_yunet_2023mar.onnx",
+  "detector_score_threshold": 0.65,
+  "nms_threshold": 0.3,
+  "top_k": 5000,
+  "detector_input_max_side": 1024,
+  "crop_margin": 0.25,
+  "min_face_size": 48,
+  "weights": {
+    "default": 1.0,
+    "alex": 5.0,
+    "artem": 5.0
+  },
+  "split_policy": {
+    "default": "group-safe by <source>/<person>",
+    "alex_artem": "image-level via split_group_key, so each person can appear in both train and val"
+  },
+  "counts_by_label_source": {
+    "alex:us": 59,
+    "artem:us": 27,
+    "negative:vk_user_photos": 1634,
+    "positive:akykla": 214,
+    "positive:inter-escort": 238,
+    "positive:luxty_escort": 595
+  }
+}

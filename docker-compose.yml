@@ -6,9 +6,11 @@ services:
     environment:
       FACE_CLASSIFIER_MODEL_PATH: /app/runs/face_efficientnet_b0/cpu_export/img224/model_fp32_ts.pt
       FACE_DETECTOR_MODEL_PATH: /app/face_detection_yunet_2023mar.onnx
+      FACE_CLASS_LABELS: positive,negative,alex,artem
       TORCH_NUM_THREADS: "1"
       TORCH_NUM_INTEROP_THREADS: "1"
       INFERENCE_MAX_CONCURRENCY: "2"
+      FACE_DETECTOR_INPUT_MAX_SIDE: "1024"
     volumes:
       - type: bind
         source: ./runs

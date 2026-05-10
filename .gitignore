@@ -12,4 +12,7 @@ runs/
 .pytest_cache/
 *.log
 data/raw/
+data/face_dataset*/data/
+data/positives_original/
+data/negatives_original/
 reports/**/crops/

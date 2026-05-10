@@ -14,6 +14,7 @@ from backend.app import (
     app,
     choose_best_face,
     crop_box_for_face,
+    detect_faces,
     make_preprocess,
 )
 
@@ -48,6 +49,17 @@ class SmallFaceDetector:
         return 1, faces
 
 
+class ScaledFaceDetector:
+    def setInputSize(self, size):
+        self.size = size
+
+    def detect(self, image):
+        faces = torch.zeros((1, 15), dtype=torch.float32).numpy()
+        faces[0, 0:4] = [10, 20, 30, 40]
+        faces[0, 14] = 0.8
+        return 1, faces
+
+
 class ConstantClassifier:
     def __init__(self, logit):
         self.logit = logit
@@ -57,6 +69,15 @@ class ConstantClassifier:
         return torch.tensor([[self.logit]], dtype=torch.float32)
 
 
+class MultiClassClassifier:
+    def __init__(self, logits):
+        self.logits = logits
+
+    def __call__(self, tensor):
+        self.last_shape = tuple(tensor.shape)
+        return torch.tensor([self.logits], dtype=torch.float32)
+
+
 def make_png_bytes(size=(180, 160), color=(128, 96, 64)):
     image = Image.new("RGB", size, color=color)
     buffer = BytesIO()
@@ -64,14 +85,14 @@ def make_png_bytes(size=(180, 160), color=(128, 96, 64)):
     return buffer.getvalue()
 
 
-def make_service(detector):
+def make_service(detector, classifier=None):
     settings = Settings(
         classifier_model_path=Path("classifier.pt"),
         detector_model_path=Path("detector.onnx"),
         classifier_threshold=0.65,
         min_face_size=48,
     )
-    classifier = ConstantClassifier(logit=1.0)
+    classifier = classifier or ConstantClassifier(logit=1.0)
     return InferenceService(settings, detector, classifier, make_preprocess()), classifier
 
 
@@ -112,6 +133,21 @@ def test_preprocess_is_deterministic_for_fixed_crop():
     assert torch.equal(first, second)
 
 
+def test_detect_faces_resizes_large_image_and_scales_bbox_back():
+    detector = ScaledFaceDetector()
+    image = torch.zeros((1000, 2000, 3), dtype=torch.uint8).numpy()
+
+    faces = detect_faces(detector, image, max_side=1000)
+
+    assert detector.size == (1000, 500)
+    assert len(faces) == 1
+    assert faces[0].bbox_x == 20
+    assert faces[0].bbox_y == 40
+    assert faces[0].bbox_w == 60
+    assert faces[0].bbox_h == 80
+    assert abs(faces[0].detector_score - 0.8) < 1e-6
+
+
 def test_service_returns_no_face_response():
     service, _ = make_service(NoFaceDetector())
 
@@ -135,6 +171,20 @@ def test_service_classifies_one_face_and_returns_score():
     assert classifier.last_shape == (1, 3, 224, 224)
     assert result["bbox"]["width"] >= 48
     assert result["bbox"]["height"] >= 48
+
+
+def test_service_classifies_multiclass_output():
+    classifier = MultiClassClassifier([-1.0, 0.5, 4.0, 1.0])
+    service, _ = make_service(OneFaceDetector(), classifier)
+
+    result = service.predict(Image.open(BytesIO(make_png_bytes())))
+
+    assert result["face_found"] is True
+    assert result["label"] == "alex"
+    assert result["score"] == result["scores"]["alex"]
+    assert result["logit"] == result["logits"]["alex"]
+    assert set(result["scores"]) == {"negative", "positive", "alex", "artem"}
+    assert classifier.last_shape == (1, 3, 224, 224)
 
 
 def test_service_rejects_small_face_without_classification():

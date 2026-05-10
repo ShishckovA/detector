@@ -13,14 +13,15 @@ from pathlib import Path
 from typing import Any
 
 
-METRIC_NAMES = ("loss", "accuracy", "precision", "recall", "f1", "roc_auc")
-LABEL_TO_ID = {"negative": 0, "positive": 1}
+METRIC_NAMES = ("loss", "accuracy", "precision", "recall", "f1")
+LABEL_TO_ID = {"positive": 0, "negative": 1, "alex": 2, "artem": 3}
 ID_TO_LABEL = {value: key for key, value in LABEL_TO_ID.items()}
 EXTRA_SPLIT_FIELDS = [
     "label_id",
     "group_source",
     "group_person",
     "group_key",
+    "split_group_key",
     "dataset_weight",
     "split",
     "resolved_path",
@@ -51,7 +52,7 @@ class FaceImageDataset:
             image = image.convert("RGB")
             if self.transform is not None:
                 image = self.transform(image)
-        label = torch.tensor(float(row["label_id"]), dtype=torch.float32)
+        label = torch.tensor(int(row["label_id"]), dtype=torch.long)
         weight = torch.tensor(float(row.get("dataset_weight", 1.0)), dtype=torch.float32)
         return image, label, weight, row["group_source"]
 
@@ -181,7 +182,9 @@ def read_manifest(dataset_dir: Path) -> ManifestData:
             enriched["label_id"] = LABEL_TO_ID[label]
             enriched["group_source"] = source
             enriched["group_person"] = person
-            enriched["group_key"] = f"{source}/{person}"
+            split_group_key = row.get("split_group_key", "").strip()
+            enriched["split_group_key"] = split_group_key
+            enriched["group_key"] = split_group_key or f"{source}/{person}"
             enriched["resolved_path"] = str(resolved_path)
             rows.append(enriched)
 
@@ -223,6 +226,19 @@ def apply_dataset_weights(
         raise ValueError(f"Unknown dataset weights for {unknown}; known datasets are {datasets}")
 
     effective = {dataset: explicit_weights.get(dataset, default_weight) for dataset in datasets}
+    for dataset in datasets:
+        if dataset in explicit_weights:
+            continue
+        manifest_weights = {
+            float(row["dataset_weight"])
+            for row in rows
+            if row["group_source"] == dataset and str(row.get("dataset_weight", "")).strip()
+        }
+        if len(manifest_weights) > 1:
+            raise ValueError(f"Manifest has multiple dataset weights for {dataset}: {sorted(manifest_weights)}")
+        if manifest_weights:
+            effective[dataset] = manifest_weights.pop()
+
     for row in rows:
         row["dataset_weight"] = effective[row["group_source"]]
     return effective
@@ -512,74 +528,109 @@ def weighted_binary_roc_auc(labels: list[int], scores: list[float], weights: lis
     return auc_numerator / (positive_weight * negative_weight)
 
 
-def binary_metrics(labels: list[int], logits: list[float], loss: float) -> dict[str, float]:
-    predictions = [1 if logit >= 0.0 else 0 for logit in logits]
-    tp = sum(1 for pred, label in zip(predictions, labels) if pred == 1 and label == 1)
-    tn = sum(1 for pred, label in zip(predictions, labels) if pred == 0 and label == 0)
-    fp = sum(1 for pred, label in zip(predictions, labels) if pred == 1 and label == 0)
-    fn = sum(1 for pred, label in zip(predictions, labels) if pred == 0 and label == 1)
+def argmax(values: list[float]) -> int:
+    return max(range(len(values)), key=lambda index: values[index])
 
-    total = max(1, len(labels))
+
+def class_metric_row(tp: float, fp: float, fn: float, support: float, predicted: float) -> dict[str, float]:
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return {
-        "loss": loss,
-        "accuracy": (tp + tn) / total,
         "precision": precision,
         "recall": recall,
         "f1": f1,
-        "roc_auc": binary_roc_auc(labels, logits),
+        "support": support,
+        "predicted": predicted,
     }
 
 
-def weighted_binary_metrics(
+def multiclass_metrics(labels: list[int], predictions: list[int], loss: float) -> dict[str, Any]:
+    total = max(1, len(labels))
+    correct = sum(1 for label, pred in zip(labels, predictions) if label == pred)
+    per_class: dict[str, dict[str, float]] = {}
+
+    for class_id in sorted(ID_TO_LABEL):
+        tp = sum(1 for label, pred in zip(labels, predictions) if label == class_id and pred == class_id)
+        fp = sum(1 for label, pred in zip(labels, predictions) if label != class_id and pred == class_id)
+        fn = sum(1 for label, pred in zip(labels, predictions) if label == class_id and pred != class_id)
+        support = sum(1 for label in labels if label == class_id)
+        predicted = sum(1 for pred in predictions if pred == class_id)
+        per_class[ID_TO_LABEL[class_id]] = class_metric_row(tp, fp, fn, float(support), float(predicted))
+
+    precisions = [metrics["precision"] for metrics in per_class.values()]
+    recalls = [metrics["recall"] for metrics in per_class.values()]
+    f1s = [metrics["f1"] for metrics in per_class.values()]
+
+    return {
+        "loss": loss,
+        "accuracy": correct / total,
+        "precision": sum(precisions) / len(precisions),
+        "recall": sum(recalls) / len(recalls),
+        "f1": sum(f1s) / len(f1s),
+        "per_class": per_class,
+    }
+
+
+def weighted_multiclass_metrics(
     labels: list[int],
-    logits: list[float],
+    predictions: list[int],
     losses: list[float],
     weights: list[float],
-) -> dict[str, float]:
-    predictions = [1 if logit >= 0.0 else 0 for logit in logits]
+) -> dict[str, Any]:
     total_weight = max(1e-12, sum(weights))
-    tp = sum(weight for pred, label, weight in zip(predictions, labels, weights) if pred == 1 and label == 1)
-    tn = sum(weight for pred, label, weight in zip(predictions, labels, weights) if pred == 0 and label == 0)
-    fp = sum(weight for pred, label, weight in zip(predictions, labels, weights) if pred == 1 and label == 0)
-    fn = sum(weight for pred, label, weight in zip(predictions, labels, weights) if pred == 0 and label == 1)
+    correct_weight = sum(weight for label, pred, weight in zip(labels, predictions, weights) if label == pred)
     weighted_loss = sum(loss * weight for loss, weight in zip(losses, weights)) / total_weight
-    precision = tp / (tp + fp) if tp + fp else 0.0
-    recall = tp / (tp + fn) if tp + fn else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    per_class: dict[str, dict[str, float]] = {}
+
+    for class_id in sorted(ID_TO_LABEL):
+        tp = sum(weight for label, pred, weight in zip(labels, predictions, weights) if label == class_id and pred == class_id)
+        fp = sum(weight for label, pred, weight in zip(labels, predictions, weights) if label != class_id and pred == class_id)
+        fn = sum(weight for label, pred, weight in zip(labels, predictions, weights) if label == class_id and pred != class_id)
+        support = sum(weight for label, weight in zip(labels, weights) if label == class_id)
+        predicted = sum(weight for pred, weight in zip(predictions, weights) if pred == class_id)
+        per_class[ID_TO_LABEL[class_id]] = class_metric_row(tp, fp, fn, support, predicted)
+
+    precisions = [metrics["precision"] for metrics in per_class.values()]
+    recalls = [metrics["recall"] for metrics in per_class.values()]
+    f1s = [metrics["f1"] for metrics in per_class.values()]
+
     return {
         "loss": weighted_loss,
-        "accuracy": (tp + tn) / total_weight,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "roc_auc": weighted_binary_roc_auc(labels, logits, weights),
+        "accuracy": correct_weight / total_weight,
+        "precision": sum(precisions) / len(precisions),
+        "recall": sum(recalls) / len(recalls),
+        "f1": sum(f1s) / len(f1s),
+        "per_class": per_class,
     }
 
 
 def collect_epoch_metrics(
     labels: list[int],
-    logits: list[float],
+    logits: list[list[float]],
     losses: list[float],
     weights: list[float],
     datasets: list[str],
 ) -> dict[str, Any]:
     overall_loss = sum(losses) / max(1, len(losses))
-    by_dataset: dict[str, dict[str, float]] = {}
+    predictions = [argmax(values) for values in logits]
+    by_dataset: dict[str, dict[str, Any]] = {}
     for dataset in sorted(set(datasets)):
         indices = [index for index, item in enumerate(datasets) if item == dataset]
         dataset_labels = [labels[index] for index in indices]
-        dataset_logits = [logits[index] for index in indices]
+        dataset_predictions = [predictions[index] for index in indices]
         dataset_losses = [losses[index] for index in indices]
-        by_dataset[dataset] = binary_metrics(dataset_labels, dataset_logits, sum(dataset_losses) / max(1, len(dataset_losses)))
+        by_dataset[dataset] = multiclass_metrics(
+            dataset_labels,
+            dataset_predictions,
+            sum(dataset_losses) / max(1, len(dataset_losses)),
+        )
         by_dataset[dataset]["count"] = float(len(indices))
         by_dataset[dataset]["weight"] = weights[indices[0]]
 
     return {
-        "overall": binary_metrics(labels, logits, overall_loss),
-        "weighted": weighted_binary_metrics(labels, logits, losses, weights),
+        "overall": multiclass_metrics(labels, predictions, overall_loss),
+        "weighted": weighted_multiclass_metrics(labels, predictions, losses, weights),
         "by_dataset": by_dataset,
     }
 
@@ -589,6 +640,16 @@ def flatten_split_metrics(prefix: str, metrics: dict[str, Any]) -> dict[str, Any
     for metric_name in METRIC_NAMES:
         row[f"{prefix}_{metric_name}"] = metrics["overall"][metric_name]
         row[f"{prefix}_weighted_{metric_name}"] = metrics["weighted"][metric_name]
+
+    for class_name, class_metrics in metrics["overall"]["per_class"].items():
+        class_key = safe_metric_key(class_name)
+        for metric_name, value in class_metrics.items():
+            row[f"{prefix}_class_{class_key}_{metric_name}"] = value
+
+    for class_name, class_metrics in metrics["weighted"]["per_class"].items():
+        class_key = safe_metric_key(class_name)
+        for metric_name, value in class_metrics.items():
+            row[f"{prefix}_weighted_class_{class_key}_{metric_name}"] = value
 
     for dataset, dataset_metrics in metrics["by_dataset"].items():
         dataset_key = safe_metric_key(dataset)
@@ -609,8 +670,8 @@ def metric_row_fieldnames(row: dict[str, Any]) -> list[str]:
         *[f"train_weighted_{metric}" for metric in METRIC_NAMES],
         *[f"val_{metric}" for metric in METRIC_NAMES],
         *[f"val_weighted_{metric}" for metric in METRIC_NAMES],
-        "best_val_weighted_roc_auc",
-        "best_val_roc_auc",
+        "best_val_weighted_f1",
+        "best_val_f1",
     ]
     return base + sorted(key for key in row if key not in base)
 
@@ -643,7 +704,7 @@ def write_tensorboard_metrics(
     epoch: int,
     train_metrics: dict[str, Any],
     val_metrics: dict[str, Any],
-    best_auc: float,
+    best_metric: float,
     lr: float,
 ) -> None:
     for metric_name in METRIC_NAMES:
@@ -653,13 +714,23 @@ def write_tensorboard_metrics(
         writer.add_scalar(f"{metric_name}/weighted/val", val_metrics["weighted"][metric_name], epoch)
 
     for split_name, split_metrics in (("train", train_metrics), ("val", val_metrics)):
+        for class_name, metrics in split_metrics["overall"]["per_class"].items():
+            class_key = safe_metric_key(class_name)
+            for metric_name in ("precision", "recall", "f1"):
+                writer.add_scalar(f"{metric_name}/class/{class_key}/{split_name}", metrics[metric_name], epoch)
+
+        for class_name, metrics in split_metrics["weighted"]["per_class"].items():
+            class_key = safe_metric_key(class_name)
+            for metric_name in ("precision", "recall", "f1"):
+                writer.add_scalar(f"{metric_name}/weighted_class/{class_key}/{split_name}", metrics[metric_name], epoch)
+
         for dataset, metrics in split_metrics["by_dataset"].items():
             dataset_key = safe_metric_key(dataset)
             writer.add_scalar(f"accuracy/dataset/{dataset_key}/{split_name}", metrics["accuracy"], epoch)
             writer.add_scalar(f"dataset_count/{dataset_key}/{split_name}", metrics["count"], epoch)
             writer.add_scalar(f"dataset_weight/{dataset_key}", metrics["weight"], epoch)
 
-    writer.add_scalar("roc_auc/best_val_weighted", best_auc, epoch)
+    writer.add_scalar("f1/best_val_weighted", best_metric, epoch)
     writer.add_scalar("lr", lr, epoch)
     writer.flush()
 
@@ -729,14 +800,14 @@ def build_transforms(deps: dict[str, Any], image_size: int) -> tuple[Any, Any]:
     return train_transform, val_transform
 
 
-def build_model(deps: dict[str, Any], weights_name: str) -> Any:
+def build_model(deps: dict[str, Any], weights_name: str, num_classes: int | None = None) -> Any:
     nn = deps["nn"]
     efficientnet_b0 = deps["efficientnet_b0"]
     weights_enum = deps["EfficientNet_B0_Weights"]
     weights = weights_enum.IMAGENET1K_V1 if weights_name == "imagenet" else None
     model = efficientnet_b0(weights=weights)
     in_features = model.classifier[-1].in_features
-    model.classifier[-1] = nn.Linear(in_features, 1)
+    model.classifier[-1] = nn.Linear(in_features, num_classes or len(LABEL_TO_ID))
     return model
 
 
@@ -749,13 +820,13 @@ def run_epoch(
     device: Any,
     train: bool,
     epoch: int,
-) -> dict[str, float]:
+) -> dict[str, Any]:
     torch = deps["torch"]
     tqdm = deps["tqdm"]
 
     model.train(train)
     all_labels: list[int] = []
-    all_logits: list[float] = []
+    all_logits: list[list[float]] = []
     all_losses: list[float] = []
     all_weights: list[float] = []
     all_datasets: list[str] = []
@@ -773,7 +844,7 @@ def run_epoch(
             optimizer.zero_grad(set_to_none=True)
 
         with torch.set_grad_enabled(train):
-            logits = model(images).squeeze(1)
+            logits = model(images)
             per_sample_loss = criterion(logits, labels)
             loss = (per_sample_loss * sample_weights).sum() / sample_weights.sum().clamp_min(1e-12)
             if train:
@@ -781,7 +852,7 @@ def run_epoch(
                 optimizer.step()
 
         all_labels.extend(int(value) for value in labels.detach().cpu().tolist())
-        all_logits.extend(float(value) for value in logits.detach().cpu().tolist())
+        all_logits.extend([[float(item) for item in value] for value in logits.detach().cpu().tolist()])
         all_losses.extend(float(value) for value in per_sample_loss.detach().cpu().tolist())
         all_weights.extend(float(value) for value in sample_weights.detach().cpu().tolist())
         all_datasets.extend(str(value) for value in dataset_names)
@@ -822,20 +893,18 @@ def train_model(
         pin_memory=pin_memory,
     )
 
-    model = build_model(deps, args.weights).to(device)
+    model = build_model(deps, args.weights, num_classes=len(LABEL_TO_ID)).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    train_counts = Counter(int(row["label_id"]) for row in train_rows)
-    pos_weight_value = train_counts[0] / max(1, train_counts[1])
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight_value], device=device), reduction="none")
+    criterion = nn.CrossEntropyLoss(reduction="none")
 
     start_epoch = 1
-    best_auc = -math.inf
+    best_metric = -math.inf
     if args.resume is not None:
         checkpoint = torch.load(args.resume, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = int(checkpoint["epoch"]) + 1
-        best_auc = float(checkpoint.get("best_auc", best_auc))
+        best_metric = float(checkpoint.get("best_metric", checkpoint.get("best_auc", best_metric)))
 
     metrics_path = args.output_dir / "metrics.csv"
     append_metric_rows = args.resume is not None
@@ -849,25 +918,25 @@ def train_model(
         for epoch in range(start_epoch, args.epochs + 1):
             train_metrics = run_epoch(deps, model, train_loader, criterion, optimizer, device, True, epoch)
             val_metrics = run_epoch(deps, model, val_loader, criterion, optimizer, device, False, epoch)
-            val_auc = val_metrics["overall"]["roc_auc"]
-            val_weighted_auc = val_metrics["weighted"]["roc_auc"]
-            selection_auc = val_weighted_auc if not math.isnan(val_weighted_auc) else val_auc
-            if not math.isnan(selection_auc) and selection_auc > best_auc:
-                best_auc = selection_auc
-                save_checkpoint(args.output_dir / "best.pt", epoch, model, optimizer, best_auc, config, val_metrics, torch)
+            val_f1 = val_metrics["overall"]["f1"]
+            val_weighted_f1 = val_metrics["weighted"]["f1"]
+            selection_metric = val_weighted_f1 if not math.isnan(val_weighted_f1) else val_f1
+            if not math.isnan(selection_metric) and selection_metric > best_metric:
+                best_metric = selection_metric
+                save_checkpoint(args.output_dir / "best.pt", epoch, model, optimizer, best_metric, config, val_metrics, torch)
 
-            save_checkpoint(args.output_dir / "last.pt", epoch, model, optimizer, best_auc, config, val_metrics, torch)
+            save_checkpoint(args.output_dir / "last.pt", epoch, model, optimizer, best_metric, config, val_metrics, torch)
             metric_row = {
                 "epoch": epoch,
                 **flatten_split_metrics("train", train_metrics),
                 **flatten_split_metrics("val", val_metrics),
-                "val_roc_auc": val_auc,
-                "best_val_weighted_roc_auc": best_auc,
-                "best_val_roc_auc": best_auc,
+                "val_f1": val_f1,
+                "best_val_weighted_f1": best_metric,
+                "best_val_f1": best_metric,
             }
             append_metrics(metrics_path, metric_row, append=append_metric_rows)
             if writer is not None:
-                write_tensorboard_metrics(writer, epoch, train_metrics, val_metrics, best_auc, args.lr)
+                write_tensorboard_metrics(writer, epoch, train_metrics, val_metrics, best_metric, args.lr)
             append_metric_rows = True
             print(
                 "epoch "
@@ -876,9 +945,9 @@ def train_model(
                 f"train_weighted_loss={train_metrics['weighted']['loss']:.4f} "
                 f"val_loss={val_metrics['overall']['loss']:.4f} "
                 f"val_weighted_loss={val_metrics['weighted']['loss']:.4f} "
-                f"val_auc={val_auc:.4f} "
-                f"val_weighted_auc={val_weighted_auc:.4f} "
-                f"best_weighted_auc={best_auc:.4f}"
+                f"val_f1={val_f1:.4f} "
+                f"val_weighted_f1={val_weighted_f1:.4f} "
+                f"best_weighted_f1={best_metric:.4f}"
             )
     finally:
         if writer is not None:
@@ -890,9 +959,9 @@ def save_checkpoint(
     epoch: int,
     model: Any,
     optimizer: Any,
-    best_auc: float,
+    best_metric: float,
     config: dict[str, Any],
-    metrics: dict[str, float],
+    metrics: dict[str, Any],
     torch_module: Any,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -901,7 +970,7 @@ def save_checkpoint(
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
-            "best_auc": best_auc,
+            "best_metric": best_metric,
             "config": config,
             "class_to_idx": LABEL_TO_ID,
             "metrics": metrics,
