@@ -445,6 +445,7 @@ h1 {
 
 .score-ring.is-celebrating .strawberry-rain span {
   animation: strawberry-arc 1.7s linear both;
+  animation-delay: var(--delay);
 }
 
 @keyframes strawberry-arc {

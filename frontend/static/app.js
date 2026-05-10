@@ -290,6 +290,8 @@ function launchStrawberries(shouldLaunch) {
   if (!shouldLaunch) return;
 
   const count = 18;
+  const launchWindowSeconds = 1;
+  const launchDelayStep = count <= 1 ? 0 : launchWindowSeconds / (count - 1);
   const fragment = document.createDocumentFragment();
   for (let index = 0; index < count; index += 1) {
     const progress = count === 1 ? 0.5 : index / (count - 1);
@@ -317,6 +319,7 @@ function launchStrawberries(shouldLaunch) {
     berry.style.setProperty("--end-y", `${endY.toFixed(1)}px`);
     berry.style.setProperty("--rotation", `${rotation}deg`);
     berry.style.setProperty("--mid-rotation", `${(rotation * 0.42).toFixed(1)}deg`);
+    berry.style.setProperty("--delay", `${(index * launchDelayStep).toFixed(3)}s`);
     fragment.appendChild(berry);
   }
 
