@@ -59,7 +59,12 @@ function getSociabilityPercent(payload) {
     return null;
   }
   if (isDeveloperJoke(payload)) return 146;
-  return Math.round(Math.max(0, Math.min(1, payload.score)) * 100);
+
+  const confidence = Math.max(0, Math.min(1, payload.score));
+  if (payload.label === "negative") {
+    return Math.round((1 - confidence) * 100);
+  }
+  return Math.round(confidence * 100);
 }
 
 function formatPhotoQuality(value) {
@@ -259,7 +264,7 @@ function renderResult(payload) {
   thresholdValue.textContent = payload.face_found ? "Фото принято" : "Нужно другое фото";
   detectorValue.textContent = formatPhotoQuality(payload.detector_score);
   totalTiming.textContent = formatMs(payload.timings_ms?.total);
-  launchStrawberries(payload.face_found, developerJoke);
+  launchStrawberries(developerJoke);
 
   if (payload.face_found) {
     setMessage(
@@ -277,21 +282,41 @@ function renderResult(payload) {
   drawPreview(payload);
 }
 
-function launchStrawberries(shouldLaunch, isDeveloperMode) {
+function launchStrawberries(shouldLaunch) {
   if (!strawberryRain) return;
   strawberryRain.replaceChildren();
   scoreRing.classList.remove("is-celebrating");
 
   if (!shouldLaunch) return;
 
-  const count = isDeveloperMode ? 18 : 10;
+  const count = 18;
   const fragment = document.createDocumentFragment();
   for (let index = 0; index < count; index += 1) {
+    const progress = count === 1 ? 0.5 : index / (count - 1);
+    const horizontal = -172 + progress * 344;
+    const upward = -185 + Math.abs(progress - 0.5) * 74 + (index % 3) * 10;
+    const gravity = 430 + (index % 4) * 32;
+    const p25X = horizontal * 0.25;
+    const p25Y = upward * 0.25 + gravity * 0.03125;
+    const p50X = horizontal * 0.5;
+    const p50Y = upward * 0.5 + gravity * 0.125;
+    const p75X = horizontal * 0.75;
+    const p75Y = upward * 0.75 + gravity * 0.28125;
+    const endX = horizontal;
+    const endY = upward + gravity * 0.5;
+    const rotation = (index % 2 === 0 ? 1 : -1) * (130 + (index % 5) * 28);
     const berry = document.createElement("span");
     berry.textContent = "🍓";
-    berry.style.setProperty("--x", `${12 + (index / Math.max(1, count - 1)) * 76}%`);
-    berry.style.setProperty("--delay", `${(index % 6) * 0.13}s`);
-    berry.style.setProperty("--drift", index % 2 === 0 ? "-22px" : "22px");
+    berry.style.setProperty("--p25-x", `${p25X.toFixed(1)}px`);
+    berry.style.setProperty("--p25-y", `${p25Y.toFixed(1)}px`);
+    berry.style.setProperty("--p50-x", `${p50X.toFixed(1)}px`);
+    berry.style.setProperty("--p50-y", `${p50Y.toFixed(1)}px`);
+    berry.style.setProperty("--p75-x", `${p75X.toFixed(1)}px`);
+    berry.style.setProperty("--p75-y", `${p75Y.toFixed(1)}px`);
+    berry.style.setProperty("--end-x", `${endX.toFixed(1)}px`);
+    berry.style.setProperty("--end-y", `${endY.toFixed(1)}px`);
+    berry.style.setProperty("--rotation", `${rotation}deg`);
+    berry.style.setProperty("--mid-rotation", `${(rotation * 0.42).toFixed(1)}deg`);
     fragment.appendChild(berry);
   }
 

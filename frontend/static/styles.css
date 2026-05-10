@@ -434,37 +434,47 @@ h1 {
 
 .strawberry-rain span {
   position: absolute;
-  top: 46%;
-  left: var(--x);
+  top: 50%;
+  left: 50%;
   opacity: 0;
   font-size: 19px;
   line-height: 1;
   filter: drop-shadow(0 8px 10px rgba(21, 24, 23, 0.18));
-  transform: translate(-50%, -50%) scale(0.62) rotate(-12deg);
+  transform: translate(-50%, -50%) scale(0.52) rotate(-12deg);
 }
 
 .score-ring.is-celebrating .strawberry-rain span {
-  animation: strawberry-fall 1.55s cubic-bezier(0.17, 0.84, 0.44, 1) both;
-  animation-delay: var(--delay);
+  animation: strawberry-arc 1.7s linear both;
 }
 
-@keyframes strawberry-fall {
+@keyframes strawberry-arc {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.56) rotate(-18deg);
+    transform: translate(-50%, -50%) translate(0, 0) scale(0.48) rotate(0deg);
   }
 
-  14% {
+  8% {
     opacity: 1;
   }
 
-  64% {
+  25% {
     opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--p25-x), var(--p25-y)) scale(0.86) rotate(var(--mid-rotation));
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--p50-x), var(--p50-y)) scale(1.04) rotate(var(--mid-rotation));
+  }
+
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--p75-x), var(--p75-y)) scale(1) rotate(var(--rotation));
   }
 
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--drift)), 132px) scale(1.08) rotate(54deg);
+    transform: translate(-50%, -50%) translate(var(--end-x), var(--end-y)) scale(0.9) rotate(var(--rotation));
   }
 }
 
