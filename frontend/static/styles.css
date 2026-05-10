@@ -376,8 +376,10 @@ h1 {
 }
 
 .verdict-line {
-  justify-content: space-between;
-  gap: 12px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .verdict-line strong {
@@ -386,7 +388,9 @@ h1 {
   color: #fff;
   background: var(--green);
   font-size: 13px;
-  text-transform: capitalize;
+  line-height: 1.16;
+  text-align: center;
+  text-transform: none;
 }
 
 .verdict-line strong.is-negative {
@@ -394,20 +398,74 @@ h1 {
 }
 
 .score-ring {
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
   width: min(170px, 100%);
   aspect-ratio: 1;
   margin: 0 auto;
   border-radius: 50%;
+  overflow: visible;
   background:
     radial-gradient(circle, #fff 0 56%, transparent 57%),
     conic-gradient(var(--green) calc(var(--score) * 1turn), rgba(21, 24, 23, 0.1) 0);
 }
 
-.score-ring span {
+.score-ring.is-developer-joke {
+  background:
+    radial-gradient(circle, #fff 0 56%, transparent 57%),
+    conic-gradient(var(--green) 0.78turn, var(--coral) 0.78turn 0.9turn, var(--amber) 0.9turn 1turn);
+}
+
+.score-value {
+  position: relative;
+  z-index: 2;
   font-size: 34px;
   font-weight: 900;
+}
+
+.strawberry-rain {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.strawberry-rain span {
+  position: absolute;
+  top: 46%;
+  left: var(--x);
+  opacity: 0;
+  font-size: 19px;
+  line-height: 1;
+  filter: drop-shadow(0 8px 10px rgba(21, 24, 23, 0.18));
+  transform: translate(-50%, -50%) scale(0.62) rotate(-12deg);
+}
+
+.score-ring.is-celebrating .strawberry-rain span {
+  animation: strawberry-fall 1.55s cubic-bezier(0.17, 0.84, 0.44, 1) both;
+  animation-delay: var(--delay);
+}
+
+@keyframes strawberry-fall {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.56) rotate(-18deg);
+  }
+
+  14% {
+    opacity: 1;
+  }
+
+  64% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--drift)), 132px) scale(1.08) rotate(54deg);
+  }
 }
 
 .metric-list {
@@ -640,7 +698,13 @@ h1 {
     padding: 0 10px;
   }
 
-  .score-ring span {
+  .score-value {
     font-size: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .score-ring.is-celebrating .strawberry-rain span {
+    animation: none;
   }
 }

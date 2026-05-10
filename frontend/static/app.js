@@ -20,24 +20,19 @@ const scoreValue = document.querySelector("#scoreValue");
 const thresholdValue = document.querySelector("#thresholdValue");
 const detectorValue = document.querySelector("#detectorValue");
 const totalTiming = document.querySelector("#totalTiming");
+const strawberryRain = document.querySelector("#strawberryRain");
 
 let selectedFile = null;
 let currentImage = null;
 let currentImageUrl = null;
 let latestResult = null;
 
-const DISPLAY_LABELS = {
-  positive: "Открытый",
-  negative: "Спокойный",
-  alex: "Алекс",
-  artem: "Артём",
-};
+const DEVELOPER_JOKE_LABELS = new Set(["alex", "artem"]);
 
 const RESULT_MESSAGES = {
-  positive: "Фото производит открытое и контактное впечатление.",
-  negative: "Фото выглядит спокойнее. Можно попробовать другой ракурс или выражение.",
-  alex: "Фото больше всего похоже на класс Алекс.",
-  artem: "Фото больше всего похоже на класс Артём.",
+  positive: "Фото выглядит достаточно контактным. Можно сравнить с другим вариантом.",
+  negative: "Другой ракурс, свет или выражение могут поднять оценку.",
+  developer_joke: "На 146% общительный. Так задумали разработчики.",
 };
 
 function formatBytes(bytes) {
@@ -55,8 +50,16 @@ function formatMs(value) {
   return value < 1000 ? "мгновенно" : `${(value / 1000).toFixed(1)} с`;
 }
 
-function formatPercent(value) {
-  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "-";
+function isDeveloperJoke(payload) {
+  return payload.face_found && DEVELOPER_JOKE_LABELS.has(payload.label);
+}
+
+function getSociabilityPercent(payload) {
+  if (!payload.face_found || typeof payload.score !== "number" || !Number.isFinite(payload.score)) {
+    return null;
+  }
+  if (isDeveloperJoke(payload)) return 146;
+  return Math.round(Math.max(0, Math.min(1, payload.score)) * 100);
 }
 
 function formatPhotoQuality(value) {
@@ -70,7 +73,8 @@ function getImpressionLabel(payload) {
   if (!payload.face_found) {
     return payload.reason === "face_too_small" ? "Нужно ближе" : "Не получилось";
   }
-  return DISPLAY_LABELS[payload.label] || payload.label || "-";
+  const percent = getSociabilityPercent(payload);
+  return percent === null ? "-" : `На ${percent}% общительный`;
 }
 
 function getUploadErrorMessage(message) {
@@ -98,6 +102,9 @@ function resetResult() {
   latestResult = null;
   resultEmpty.hidden = false;
   resultContent.hidden = true;
+  scoreRing.classList.remove("is-celebrating");
+  scoreRing.classList.remove("is-developer-joke");
+  if (strawberryRain) strawberryRain.replaceChildren();
   setMessage("");
 }
 
@@ -240,17 +247,27 @@ function renderResult(payload) {
   resultContent.hidden = false;
 
   const score = typeof payload.score === "number" ? payload.score : 0;
+  const sociabilityPercent = getSociabilityPercent(payload);
+  const ringScore = sociabilityPercent === null ? 0 : Math.min(1, sociabilityPercent / 100);
+  const developerJoke = isDeveloperJoke(payload);
   const label = getImpressionLabel(payload);
   labelText.textContent = label;
   labelText.classList.toggle("is-negative", payload.label === "negative" || !payload.face_found);
-  scoreRing.style.setProperty("--score", String(Math.max(0, Math.min(1, score))));
-  scoreValue.textContent = payload.score === null ? "-" : formatPercent(score);
+  scoreRing.classList.toggle("is-developer-joke", developerJoke);
+  scoreRing.style.setProperty("--score", String(ringScore));
+  scoreValue.textContent = sociabilityPercent === null ? "-" : `${sociabilityPercent}%`;
   thresholdValue.textContent = payload.face_found ? "Фото принято" : "Нужно другое фото";
   detectorValue.textContent = formatPhotoQuality(payload.detector_score);
   totalTiming.textContent = formatMs(payload.timings_ms?.total);
+  launchStrawberries(payload.face_found, developerJoke);
 
   if (payload.face_found) {
-    setMessage(RESULT_MESSAGES[payload.label] || "Оценка готова.", "ok");
+    setMessage(
+      developerJoke
+        ? RESULT_MESSAGES.developer_joke
+        : RESULT_MESSAGES[payload.label] || "Оценка готова.",
+      "ok",
+    );
   } else if (payload.reason === "face_too_small") {
     setMessage("Лицо на фото слишком маленькое. Попробуйте портрет крупнее.");
   } else {
@@ -258,6 +275,28 @@ function renderResult(payload) {
   }
 
   drawPreview(payload);
+}
+
+function launchStrawberries(shouldLaunch, isDeveloperMode) {
+  if (!strawberryRain) return;
+  strawberryRain.replaceChildren();
+  scoreRing.classList.remove("is-celebrating");
+
+  if (!shouldLaunch) return;
+
+  const count = isDeveloperMode ? 18 : 10;
+  const fragment = document.createDocumentFragment();
+  for (let index = 0; index < count; index += 1) {
+    const berry = document.createElement("span");
+    berry.textContent = "🍓";
+    berry.style.setProperty("--x", `${12 + (index / Math.max(1, count - 1)) * 76}%`);
+    berry.style.setProperty("--delay", `${(index % 6) * 0.13}s`);
+    berry.style.setProperty("--drift", index % 2 === 0 ? "-22px" : "22px");
+    fragment.appendChild(berry);
+  }
+
+  strawberryRain.appendChild(fragment);
+  requestAnimationFrame(() => scoreRing.classList.add("is-celebrating"));
 }
 
 async function submitPhoto() {

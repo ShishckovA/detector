@@ -9,7 +9,7 @@
       content="Сервис, который по фотографии помогает оценить, насколько человек выглядит открытым к общению."
     />
     <link rel="preload" href="/static/assets/hero-interface.png" as="image" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260510-four-class" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260510-sociability" />
   </head>
   <body>
     <header class="topbar">
@@ -75,11 +75,12 @@
 
                 <div class="result-content" id="resultContent" hidden>
                   <div class="verdict-line">
-                    <span class="result-label">Тип впечатления</span>
+                    <span class="result-label">Общительность</span>
                     <strong id="labelText">-</strong>
                   </div>
                   <div class="score-ring" id="scoreRing" style="--score: 0">
-                    <span id="scoreValue">0.00</span>
+                    <span class="score-value" id="scoreValue">0%</span>
+                    <div class="strawberry-rain" id="strawberryRain" aria-hidden="true"></div>
                   </div>
                   <dl class="metric-list">
                     <div>
@@ -164,6 +165,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260510-four-class" defer></script>
+    <script src="/static/app.js?v=20260510-sociability" defer></script>
   </body>
 </html>
