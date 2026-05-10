@@ -290,15 +290,16 @@ function launchStrawberries(shouldLaunch) {
   if (!shouldLaunch) return;
 
   const count = 18;
+  const burstItems = ["🍓", "🍌", "🍆"];
   const launchWindowSeconds = 1;
   const launchDelayStep = count <= 1 ? 0 : launchWindowSeconds / (count - 1);
   const fragment = document.createDocumentFragment();
   for (let index = 0; index < count; index += 1) {
-    const angle = Math.random() * Math.PI * 2;
+    const angle = Math.random() * (Math.PI / 2) - Math.PI / 4;
     const speed = 150 + Math.random() * 120;
     const gravity = 410 + Math.random() * 120;
-    const horizontal = Math.cos(angle) * speed;
-    const vertical = Math.sin(angle) * speed;
+    const horizontal = Math.sin(angle) * speed;
+    const vertical = -Math.cos(angle) * speed;
     const p25X = horizontal * 0.25;
     const p25Y = vertical * 0.25 + gravity * 0.03125;
     const p50X = horizontal * 0.5;
@@ -309,7 +310,7 @@ function launchStrawberries(shouldLaunch) {
     const endY = vertical + gravity * 0.5;
     const rotation = (Math.random() < 0.5 ? -1 : 1) * (150 + Math.random() * 170);
     const berry = document.createElement("span");
-    berry.textContent = "🍓";
+    berry.textContent = burstItems[Math.floor(Math.random() * burstItems.length)];
     berry.style.setProperty("--p25-x", `${p25X.toFixed(1)}px`);
     berry.style.setProperty("--p25-y", `${p25Y.toFixed(1)}px`);
     berry.style.setProperty("--p50-x", `${p50X.toFixed(1)}px`);
