@@ -11,9 +11,13 @@ runs/
 **/__pycache__
 .pytest_cache/
 *.log
+artifacts/
 data/raw/
 data/face_dataset*/data/
 data/positives_original/
+data/positives_original_search4faces_top20/
 data/negatives_original/
 reports/**/crops/
+reports/search4faces_duplicate_review/
+tools/queries.sh
 certbot/

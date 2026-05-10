@@ -59,7 +59,17 @@ class SourceImage:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build PNG face crop dataset for four-class face classification.")
-    parser.add_argument("--positive-dir", type=Path, default=Path("data/positives_original"))
+    parser.add_argument(
+        "--positive-dir",
+        type=Path,
+        action="append",
+        default=None,
+        help=(
+            "Positive originals root. May be repeated, for example: "
+            "--positive-dir data/positives_original "
+            "--positive-dir data/positives_original_search4faces_top20"
+        ),
+    )
     parser.add_argument("--negative-dir", type=Path, default=Path("data/negatives_original"))
     parser.add_argument("--out", type=Path, default=Path("data/face_dataset_png"))
     parser.add_argument("--detector-model", type=Path, default=Path("face_detection_yunet_2023mar.onnx"))
@@ -164,6 +174,7 @@ def write_errors(path: Path, rows: list[dict[str, str]]) -> None:
 
 def main() -> int:
     args = parse_args()
+    positive_dirs = args.positive_dir or [Path("data/positives_original")]
     register_heif()
 
     if not args.detector_model.exists():
@@ -183,7 +194,11 @@ def main() -> int:
     )
 
     sources = [
-        *[SourceImage("positive", args.positive_dir, path) for path in iter_images(args.positive_dir)],
+        *[
+            SourceImage("positive", positive_dir, path)
+            for positive_dir in positive_dirs
+            for path in iter_images(positive_dir)
+        ],
         *[SourceImage("negative", args.negative_dir, path) for path in iter_images(args.negative_dir)],
     ]
     rows: list[dict[str, Any]] = []
@@ -275,6 +290,8 @@ def main() -> int:
         "detector_input_max_side": args.detector_input_max_side,
         "crop_margin": args.crop_margin,
         "min_face_size": args.min_face_size,
+        "positive_dirs": [str(path) for path in positive_dirs],
+        "negative_dir": str(args.negative_dir),
         "weights": {
             "default": args.default_weight,
             "alex": args.personal_weight,
